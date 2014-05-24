@@ -148,10 +148,10 @@ bool Init(int iInChannels, int iInRate, int iInBits,
   FLAC__bool ok = 1;
 
   ok &= FLAC__stream_encoder_set_verify(m_encoder, true);
-  ok &= FLAC__stream_encoder_set_channels(m_encoder, 2);
-  ok &= FLAC__stream_encoder_set_bits_per_sample(m_encoder, 16);
-  ok &= FLAC__stream_encoder_set_sample_rate(m_encoder, 44100);
-  ok &= FLAC__stream_encoder_set_total_samples_estimate(m_encoder, (FLAC__uint64)iTrackLength * 44100);
+  ok &= FLAC__stream_encoder_set_channels(m_encoder, iInChannels);
+  ok &= FLAC__stream_encoder_set_bits_per_sample(m_encoder, iInBits);
+  ok &= FLAC__stream_encoder_set_sample_rate(m_encoder, iInRate);
+  ok &= FLAC__stream_encoder_set_total_samples_estimate(m_encoder, (FLAC__uint64)iTrackLength * iInRate);
   ok &= FLAC__stream_encoder_set_compression_level(m_encoder, level);
 
   // now add some metadata
