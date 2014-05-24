@@ -8,12 +8,13 @@ enable_language(CXX)
 
 find_package(xbmc REQUIRED)
 find_package(FLAC REQUIRED)
+find_package(Ogg REQUIRED)
 
 include_directories(${XBMC_INCLUDE_DIR}
                     ${FLAC_INCLUDE_DIRS})
 
 set(FLAC_SOURCES src/EncoderFlac.cpp)
 
-set(DEPLIBS ${FLAC_LIBRARIES})
+set(DEPLIBS ${FLAC_LIBRARIES} ${OGG_LIBRARIES})
 
 build_addon(audioencoder.flac FLAC DEPLIBS)
