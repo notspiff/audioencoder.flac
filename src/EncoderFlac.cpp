@@ -33,6 +33,8 @@ static const int SAMPLES_BUF_SIZE = 1024 * 2;
 FLAC__int32 *m_samplesBuf=0;
 uint8_t* outbuffer=0;
 
+uint8_t* m_tempBuffer=0; ///< temporary buffer
+
 FLAC__StreamEncoderWriteStatus write_callback_flac(const FLAC__StreamEncoder *encoder, const FLAC__byte buffer[], size_t bytes, unsigned samples, unsigned current_frame, void *client_data)
 {
   if (outbuffer)
@@ -134,6 +136,7 @@ bool Init(int iInChannels, int iInRate, int iInBits,
     return false;
 
   m_samplesBuf = new FLAC__int32[SAMPLES_BUF_SIZE];
+  m_tempBuffer = new uint8_t[32768]; // 32k of buffer for metadata etc. at the start of the track
 
   // allocate libFLAC encoder
   m_encoder = FLAC__stream_encoder_new();
@@ -186,6 +189,7 @@ bool Init(int iInChannels, int iInRate, int iInBits,
   }
 
   // initialize encoder in stream mode
+  outbuffer = m_tempBuffer;
   if (ok)
   {
     FLAC__StreamEncoderInitStatus init_status;
@@ -206,6 +210,14 @@ bool Init(int iInChannels, int iInRate, int iInBits,
 
 int Encode(int nNumBytesRead, uint8_t* pbtStream, uint8_t* buffer)
 {
+  int out_bytes = 0;
+  if (m_tempBuffer)
+  { // copy our temp buffer across
+    out_bytes = outbuffer - m_tempBuffer;
+    memcpy(buffer, m_tempBuffer, out_bytes);
+    delete[] m_tempBuffer;
+    m_tempBuffer = NULL;
+  }
   int nLeftSamples = nNumBytesRead / 2; // each sample takes 2 bytes (16 bits per sample)
   outbuffer = buffer;
   while (nLeftSamples > 0)
@@ -228,9 +240,9 @@ int Encode(int nNumBytesRead, uint8_t* pbtStream, uint8_t* buffer)
     pbtStream += nSamples * 2; // skip processed samples
   }
 
-  int outdata=outbuffer-buffer;
+  out_bytes += (outbuffer - buffer);
   outbuffer = 0;
-  return outdata;
+  return out_bytes;
 }
 
 int Flush(uint8_t* buffer)
