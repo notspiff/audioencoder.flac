@@ -10,7 +10,8 @@
   <extension
     point="xbmc.audioencoder"
     extension=".flac"
-    library_linux="audioencoder.flac.so"/>
+    library_linux="audioencoder.flac.so"
+    library_osx="audioencoder.flac.dylib"/>
   <extension point="xbmc.addon.metadata">
     <summary lang="en">Flac Audio Encoder</summary>
     <description lang="en">Flac Audio Encoder</description>
