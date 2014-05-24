@@ -107,8 +107,7 @@ void ADDON_FreeSettings()
 ADDON_STATUS ADDON_SetSetting(const char *strSetting, const void* value)
 {
   if (strcmp(strSetting,"level") == 0)
-    level = atoi((const char*)value);
-
+    level = *((int*)value);
   return ADDON_STATUS_OK;
 }
 
