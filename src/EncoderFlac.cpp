@@ -35,9 +35,13 @@ uint8_t* outbuffer=0;
 
 FLAC__StreamEncoderWriteStatus write_callback_flac(const FLAC__StreamEncoder *encoder, const FLAC__byte buffer[], size_t bytes, unsigned samples, unsigned current_frame, void *client_data)
 {
-  memcpy(outbuffer, buffer, bytes);
-  outbuffer += bytes;
-  return FLAC__STREAM_ENCODER_WRITE_STATUS_OK;
+  if (outbuffer)
+  {
+    memcpy(outbuffer, buffer, bytes);
+    outbuffer += bytes;
+    return FLAC__STREAM_ENCODER_WRITE_STATUS_OK;
+  }
+  return FLAC__STREAM_ENCODER_WRITE_STATUS_FATAL_ERROR;
 }
 
 //-- Create -------------------------------------------------------------------
