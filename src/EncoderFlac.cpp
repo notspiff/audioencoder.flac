@@ -25,25 +25,55 @@
 
 extern "C" {
 
+// settings
 int level=4;
+
+// callbacks
+void *m_opaque = NULL;
+int (*m_writeCallback)(void*, uint8_t*, int) = NULL;
+int64_t (*m_seekCallback)(void*, int64_t, int) = NULL;
+int64_t m_currentPos = 0;
+
+// encoder data
 FLAC__StreamEncoder *m_encoder=0;
 FLAC__StreamMetadata *m_metadata[2];
 
 static const int SAMPLES_BUF_SIZE = 1024 * 2;
 FLAC__int32 *m_samplesBuf=0;
-uint8_t* outbuffer=0;
-
-uint8_t* m_tempBuffer=0; ///< temporary buffer
 
 FLAC__StreamEncoderWriteStatus write_callback_flac(const FLAC__StreamEncoder *encoder, const FLAC__byte buffer[], size_t bytes, unsigned samples, unsigned current_frame, void *client_data)
 {
-  if (outbuffer)
+  if (m_writeCallback)
   {
-    memcpy(outbuffer, buffer, bytes);
-    outbuffer += bytes;
-    return FLAC__STREAM_ENCODER_WRITE_STATUS_OK;
+    if (m_writeCallback(m_opaque, (uint8_t*)buffer, bytes) == bytes)
+    {
+      m_currentPos += bytes;
+      return FLAC__STREAM_ENCODER_WRITE_STATUS_OK;
+    }
   }
   return FLAC__STREAM_ENCODER_WRITE_STATUS_FATAL_ERROR;
+}
+
+FLAC__StreamEncoderSeekStatus seek_callback_flac(const FLAC__StreamEncoder *encoder, FLAC__uint64 absolute_byte_offset, void *client_data)
+{
+  printf("seeking to %d\n", (int)absolute_byte_offset);
+  if (m_seekCallback)
+  {
+    if (m_seekCallback(m_opaque, (int64_t)absolute_byte_offset, 0) == absolute_byte_offset)
+    {
+      m_currentPos = absolute_byte_offset;
+      return FLAC__STREAM_ENCODER_SEEK_STATUS_OK;
+    }
+  }
+  printf("seek failed\n");
+  return FLAC__STREAM_ENCODER_SEEK_STATUS_ERROR;
+}
+
+FLAC__StreamEncoderTellStatus tell_callback_flac(const FLAC__StreamEncoder *encoder, FLAC__uint64 *absolute_byte_offset, void *client_data)
+{
+  // libFLAC will cope without a real tell callback
+  *absolute_byte_offset = m_currentPos;
+  return FLAC__STREAM_ENCODER_TELL_STATUS_OK;
 }
 
 //-- Create -------------------------------------------------------------------
@@ -125,25 +155,36 @@ void ADDON_Announce(const char *flag, const char *sender, const char *message, c
 {
 }
 
-bool Init(int iInChannels, int iInRate, int iInBits,
-          const char* title, const char* artist,
-          const char* albumartist, const char* album,
-          const char* year, const char* track, const char* genre,
-          const char* comment, int iTrackLength)
+bool Create(void* opaque, int (*write)(void*, uint8_t*, int), int64_t (*seek)(void*, int64_t, int))
+{
+  if (opaque && write && seek)
+  {
+    m_opaque        = opaque;
+    m_writeCallback = write;
+    m_seekCallback  = seek;
+
+    // allocate our sample buffer
+    m_samplesBuf = new FLAC__int32[SAMPLES_BUF_SIZE];
+
+    // allocate libFLAC encoder
+    m_encoder = FLAC__stream_encoder_new();
+    if (!m_encoder)
+      return false;
+
+    return true;
+  }
+  return false;
+}
+
+bool Start(int iInChannels, int iInRate, int iInBits,
+           const char* title, const char* artist,
+           const char* albumartist, const char* album,
+           const char* year, const char* track, const char* genre,
+           const char* comment, int iTrackLength)
 {
   // we only accept 2 / 44100 / 16 atm
-  if (iInChannels != 2 || iInRate != 44100 || iInBits != 16)
+  if (!m_encoder || iInChannels != 2 || iInRate != 44100 || iInBits != 16)
     return false;
-
-  m_samplesBuf = new FLAC__int32[SAMPLES_BUF_SIZE];
-  m_tempBuffer = new uint8_t[32768]; // 32k of buffer for metadata etc. at the start of the track
-
-  // allocate libFLAC encoder
-  m_encoder = FLAC__stream_encoder_new();
-  if (!m_encoder)
-  {
-    return false;
-  }
 
   FLAC__bool ok = 1;
 
@@ -165,8 +206,8 @@ bool Init(int iInChannels, int iInRate, int iInBits,
       !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) ||
       !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "ALBUM", album) ||
       !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) ||
-      !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "ALBUMARTIST", albumartist) || 
-      !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) || 
+      !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "ALBUMARTIST", albumartist) ||
+      !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) ||
       !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "TITLE", title) ||
       !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) ||
       !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "GENRE", genre) ||
@@ -177,7 +218,7 @@ bool Init(int iInChannels, int iInRate, int iInBits,
       !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) ||
       !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "COMMENT", comment) ||
       !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false)
-      ) 
+      )
     {
       ok = false;
     }
@@ -189,11 +230,10 @@ bool Init(int iInChannels, int iInRate, int iInBits,
   }
 
   // initialize encoder in stream mode
-  outbuffer = m_tempBuffer;
   if (ok)
   {
     FLAC__StreamEncoderInitStatus init_status;
-    init_status = FLAC__stream_encoder_init_stream(m_encoder, write_callback_flac, NULL, NULL, NULL, 0);
+    init_status = FLAC__stream_encoder_init_stream(m_encoder, write_callback_flac, seek_callback_flac, tell_callback_flac, NULL, 0);
     if (init_status != FLAC__STREAM_ENCODER_INIT_STATUS_OK)
     {
       ok = false;
@@ -208,18 +248,10 @@ bool Init(int iInChannels, int iInRate, int iInBits,
   return true;
 }
 
-int Encode(int nNumBytesRead, uint8_t* pbtStream, uint8_t* buffer)
+int Encode(int nNumBytesRead, uint8_t* pbtStream)
 {
-  int out_bytes = 0;
-  if (m_tempBuffer)
-  { // copy our temp buffer across
-    out_bytes = outbuffer - m_tempBuffer;
-    memcpy(buffer, m_tempBuffer, out_bytes);
-    delete[] m_tempBuffer;
-    m_tempBuffer = NULL;
-  }
+printf("called Encode with %i bytes\n", nNumBytesRead);
   int nLeftSamples = nNumBytesRead / 2; // each sample takes 2 bytes (16 bits per sample)
-  outbuffer = buffer;
   while (nLeftSamples > 0)
   {
     int nSamples = nLeftSamples > SAMPLES_BUF_SIZE ? SAMPLES_BUF_SIZE : nLeftSamples;
@@ -231,33 +263,27 @@ int Encode(int nNumBytesRead, uint8_t* pbtStream, uint8_t* buffer)
     }
 
     // feed samples to encoder
+printf("encoding %i samples\n", nSamples);
     if (!FLAC__stream_encoder_process_interleaved(m_encoder, m_samplesBuf, nSamples / 2))
     {
       return 0;
     }
+printf("encoding %i samples done\n", nSamples);
 
     nLeftSamples -= nSamples;
     pbtStream += nSamples * 2; // skip processed samples
   }
-
-  out_bytes += (outbuffer - buffer);
-  outbuffer = 0;
-  return out_bytes;
+  return nNumBytesRead; // consumed everything
 }
 
-int Flush(uint8_t* buffer)
+bool Finish()
 {
-  outbuffer = buffer;
   FLAC__stream_encoder_finish(m_encoder);
-  int outdata=outbuffer-buffer;
-  outbuffer = 0;
-  return outdata;
+  return true;
 }
 
-bool Close(const char* File)
+void Free(void *context)
 {
-  FLAC__bool ok = 0;
-
   if (m_encoder)
   {
     // now that encoding is finished, the metadata can be freed
@@ -268,11 +294,15 @@ bool Close(const char* File)
 
     // delete encoder
     FLAC__stream_encoder_delete(m_encoder);
+    m_encoder = NULL;
   }
 
-  delete m_samplesBuf;
+  delete[] m_samplesBuf;
+  m_samplesBuf = NULL;
 
-  return ok ? true : false;
+  m_opaque        = NULL;
+  m_writeCallback = NULL;
+  m_seekCallback  = NULL;
 }
 
 }
