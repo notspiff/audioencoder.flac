@@ -25,29 +25,40 @@
 
 extern "C" {
 
-// settings
+static const int SAMPLES_BUF_SIZE = 1024 * 2;
+
+// structure for holding our context
+class flac_context
+{
+public:
+  flac_context(FLAC__StreamEncoder *enc, audioenc_callbacks &cb) :
+    callbacks(cb),
+    tellPos(0),
+    encoder(enc)
+  {
+    metadata[0] = NULL;
+    metadata[1] = NULL;
+  };
+
+  audioenc_callbacks    callbacks;
+  int64_t               tellPos; ///< position for tell() callback
+  FLAC__StreamEncoder*  encoder;
+  FLAC__StreamMetadata* metadata[2];
+  FLAC__int32           samplesBuf[SAMPLES_BUF_SIZE];
+};
+
+// settings (currently global)
 int level=4;
 
-// callbacks
-void *m_opaque = NULL;
-int (*m_writeCallback)(void*, uint8_t*, int) = NULL;
-int64_t (*m_seekCallback)(void*, int64_t, int) = NULL;
-int64_t m_currentPos = 0;
-
-// encoder data
-FLAC__StreamEncoder *m_encoder=0;
-FLAC__StreamMetadata *m_metadata[2];
-
-static const int SAMPLES_BUF_SIZE = 1024 * 2;
-FLAC__int32 *m_samplesBuf=0;
 
 FLAC__StreamEncoderWriteStatus write_callback_flac(const FLAC__StreamEncoder *encoder, const FLAC__byte buffer[], size_t bytes, unsigned samples, unsigned current_frame, void *client_data)
 {
-  if (m_writeCallback)
+  flac_context *context = (flac_context *)client_data;
+  if (context && context->callbacks.write)
   {
-    if (m_writeCallback(m_opaque, (uint8_t*)buffer, bytes) == bytes)
+    if (context->callbacks.write(context->callbacks.opaque, (uint8_t*)buffer, bytes) == bytes)
     {
-      m_currentPos += bytes;
+      context->tellPos += bytes;
       return FLAC__STREAM_ENCODER_WRITE_STATUS_OK;
     }
   }
@@ -56,24 +67,28 @@ FLAC__StreamEncoderWriteStatus write_callback_flac(const FLAC__StreamEncoder *en
 
 FLAC__StreamEncoderSeekStatus seek_callback_flac(const FLAC__StreamEncoder *encoder, FLAC__uint64 absolute_byte_offset, void *client_data)
 {
-  printf("seeking to %d\n", (int)absolute_byte_offset);
-  if (m_seekCallback)
+  flac_context *context = (flac_context *)client_data;
+  if (context && context->callbacks.seek)
   {
-    if (m_seekCallback(m_opaque, (int64_t)absolute_byte_offset, 0) == absolute_byte_offset)
+    if (context->callbacks.seek(context->callbacks.opaque, (int64_t)absolute_byte_offset, 0) == absolute_byte_offset)
     {
-      m_currentPos = absolute_byte_offset;
+      context->tellPos = absolute_byte_offset;
       return FLAC__STREAM_ENCODER_SEEK_STATUS_OK;
     }
   }
-  printf("seek failed\n");
   return FLAC__STREAM_ENCODER_SEEK_STATUS_ERROR;
 }
 
 FLAC__StreamEncoderTellStatus tell_callback_flac(const FLAC__StreamEncoder *encoder, FLAC__uint64 *absolute_byte_offset, void *client_data)
 {
   // libFLAC will cope without a real tell callback
-  *absolute_byte_offset = m_currentPos;
-  return FLAC__STREAM_ENCODER_TELL_STATUS_OK;
+  flac_context *context = (flac_context *)client_data;
+  if (context)
+  {
+    *absolute_byte_offset = context->tellPos;
+    return FLAC__STREAM_ENCODER_TELL_STATUS_OK;
+  }
+  return FLAC__STREAM_ENCODER_TELL_STATUS_ERROR;
 }
 
 //-- Create -------------------------------------------------------------------
@@ -155,77 +170,74 @@ void ADDON_Announce(const char *flag, const char *sender, const char *message, c
 {
 }
 
-bool Create(void* opaque, int (*write)(void*, uint8_t*, int), int64_t (*seek)(void*, int64_t, int))
+void* Create(audioenc_callbacks *callbacks)
 {
-  if (opaque && write && seek)
+  if (callbacks && callbacks->write && callbacks->seek)
   {
-    m_opaque        = opaque;
-    m_writeCallback = write;
-    m_seekCallback  = seek;
-
-    // allocate our sample buffer
-    m_samplesBuf = new FLAC__int32[SAMPLES_BUF_SIZE];
-
     // allocate libFLAC encoder
-    m_encoder = FLAC__stream_encoder_new();
-    if (!m_encoder)
+    FLAC__StreamEncoder *encoder = FLAC__stream_encoder_new();
+    if (!encoder)
       return false;
 
-    return true;
+    return new flac_context(encoder, *callbacks);
   }
-  return false;
+  return NULL;
 }
 
-bool Start(int iInChannels, int iInRate, int iInBits,
+bool Start(void *ctx, int iInChannels, int iInRate, int iInBits,
            const char* title, const char* artist,
            const char* albumartist, const char* album,
            const char* year, const char* track, const char* genre,
            const char* comment, int iTrackLength)
 {
-  // we only accept 2 / 44100 / 16 atm
-  if (!m_encoder || iInChannels != 2 || iInRate != 44100 || iInBits != 16)
+  flac_context *context = (flac_context *)ctx;
+  if (!context || !context->encoder)
+    return false;
+
+  // we accept only 2 / 44100 / 16 atm
+  if (iInChannels != 2 || iInRate != 44100 || iInBits != 16)
     return false;
 
   FLAC__bool ok = 1;
 
-  ok &= FLAC__stream_encoder_set_verify(m_encoder, true);
-  ok &= FLAC__stream_encoder_set_channels(m_encoder, iInChannels);
-  ok &= FLAC__stream_encoder_set_bits_per_sample(m_encoder, iInBits);
-  ok &= FLAC__stream_encoder_set_sample_rate(m_encoder, iInRate);
-  ok &= FLAC__stream_encoder_set_total_samples_estimate(m_encoder, (FLAC__uint64)iTrackLength * iInRate);
-  ok &= FLAC__stream_encoder_set_compression_level(m_encoder, level);
+  ok &= FLAC__stream_encoder_set_verify(context->encoder, true);
+  ok &= FLAC__stream_encoder_set_channels(context->encoder, iInChannels);
+  ok &= FLAC__stream_encoder_set_bits_per_sample(context->encoder, iInBits);
+  ok &= FLAC__stream_encoder_set_sample_rate(context->encoder, iInRate);
+  ok &= FLAC__stream_encoder_set_total_samples_estimate(context->encoder, (FLAC__uint64)iTrackLength * iInRate);
+  ok &= FLAC__stream_encoder_set_compression_level(context->encoder, level);
 
   // now add some metadata
   FLAC__StreamMetadata_VorbisComment_Entry entry;
   if (ok)
   {
     if (
-      (m_metadata[0] = FLAC__metadata_object_new(FLAC__METADATA_TYPE_VORBIS_COMMENT)) == NULL ||
-      (m_metadata[1] = FLAC__metadata_object_new(FLAC__METADATA_TYPE_PADDING)) == NULL ||
+      (context->metadata[0] = FLAC__metadata_object_new(FLAC__METADATA_TYPE_VORBIS_COMMENT)) == NULL ||
+      (context->metadata[1] = FLAC__metadata_object_new(FLAC__METADATA_TYPE_PADDING)) == NULL ||
       !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "ARTIST", artist) ||
-      !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) ||
+      !FLAC__metadata_object_vorbiscomment_append_comment(context->metadata[0], entry, false) ||
       !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "ALBUM", album) ||
-      !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) ||
+      !FLAC__metadata_object_vorbiscomment_append_comment(context->metadata[0], entry, false) ||
       !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "ALBUMARTIST", albumartist) ||
-      !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) ||
+      !FLAC__metadata_object_vorbiscomment_append_comment(context->metadata[0], entry, false) ||
       !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "TITLE", title) ||
-      !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) ||
+      !FLAC__metadata_object_vorbiscomment_append_comment(context->metadata[0], entry, false) ||
       !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "GENRE", genre) ||
-      !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) ||
+      !FLAC__metadata_object_vorbiscomment_append_comment(context->metadata[0], entry, false) ||
       !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "TRACKNUMBER", track) ||
-      !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) ||
+      !FLAC__metadata_object_vorbiscomment_append_comment(context->metadata[0], entry, false) ||
       !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "DATE", year) ||
-      !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false) ||
+      !FLAC__metadata_object_vorbiscomment_append_comment(context->metadata[0], entry, false) ||
       !FLAC__metadata_object_vorbiscomment_entry_from_name_value_pair(&entry, "COMMENT", comment) ||
-      !FLAC__metadata_object_vorbiscomment_append_comment(m_metadata[0], entry, false)
+      !FLAC__metadata_object_vorbiscomment_append_comment(context->metadata[0], entry, false)
       )
     {
       ok = false;
     }
     else
     {
-      m_metadata[1]->length = 4096;
-      ok = FLAC__stream_encoder_set_metadata(m_encoder, m_metadata, 2);
+      context->metadata[1]->length = 4096;
+      ok = FLAC__stream_encoder_set_metadata(context->encoder, context->metadata, 2);
     }
   }
 
@@ -233,7 +245,7 @@ bool Start(int iInChannels, int iInRate, int iInBits,
   if (ok)
   {
     FLAC__StreamEncoderInitStatus init_status;
-    init_status = FLAC__stream_encoder_init_stream(m_encoder, write_callback_flac, seek_callback_flac, tell_callback_flac, NULL, 0);
+    init_status = FLAC__stream_encoder_init_stream(context->encoder, write_callback_flac, seek_callback_flac, tell_callback_flac, NULL, context);
     if (init_status != FLAC__STREAM_ENCODER_INIT_STATUS_OK)
     {
       ok = false;
@@ -248,9 +260,12 @@ bool Start(int iInChannels, int iInRate, int iInBits,
   return true;
 }
 
-int Encode(int nNumBytesRead, uint8_t* pbtStream)
+int Encode(void *ctx, int nNumBytesRead, uint8_t* pbtStream)
 {
-printf("called Encode with %i bytes\n", nNumBytesRead);
+  flac_context *context = (flac_context*)ctx;
+  if (!context || !context->encoder)
+    return 0;
+
   int nLeftSamples = nNumBytesRead / 2; // each sample takes 2 bytes (16 bits per sample)
   while (nLeftSamples > 0)
   {
@@ -259,16 +274,14 @@ printf("called Encode with %i bytes\n", nNumBytesRead);
     // convert the packed little-endian 16-bit PCM samples into an interleaved FLAC__int32 buffer for libFLAC
     for (int i = 0; i < nSamples; i++)
     { // inefficient but simple and works on big- or little-endian machines.
-      m_samplesBuf[i] = (FLAC__int32)(((FLAC__int16)(FLAC__int8)pbtStream[2*i+1] << 8) | (FLAC__int16)pbtStream[2*i]);
+      context->samplesBuf[i] = (FLAC__int32)(((FLAC__int16)(FLAC__int8)pbtStream[2*i+1] << 8) | (FLAC__int16)pbtStream[2*i]);
     }
 
     // feed samples to encoder
-printf("encoding %i samples\n", nSamples);
-    if (!FLAC__stream_encoder_process_interleaved(m_encoder, m_samplesBuf, nSamples / 2))
+    if (!FLAC__stream_encoder_process_interleaved(context->encoder, context->samplesBuf, nSamples / 2))
     {
       return 0;
     }
-printf("encoding %i samples done\n", nSamples);
 
     nLeftSamples -= nSamples;
     pbtStream += nSamples * 2; // skip processed samples
@@ -276,33 +289,33 @@ printf("encoding %i samples done\n", nSamples);
   return nNumBytesRead; // consumed everything
 }
 
-bool Finish()
+bool Finish(void *ctx)
 {
-  FLAC__stream_encoder_finish(m_encoder);
+  flac_context *context = (flac_context*)ctx;
+  if (!context || !context->encoder)
+    return false;
+
+  FLAC__stream_encoder_finish(context->encoder);
   return true;
 }
 
-void Free(void *context)
+void Free(void *ctx)
 {
-  if (m_encoder)
+  flac_context *context = (flac_context*)ctx;
+  if (context)
   {
-    // now that encoding is finished, the metadata can be freed
-    if (m_metadata[0])
-      FLAC__metadata_object_delete(m_metadata[0]);
-    if (m_metadata[1])
-      FLAC__metadata_object_delete(m_metadata[1]);
+    // free the metadata
+    if (context->metadata[0])
+      FLAC__metadata_object_delete(context->metadata[0]);
+    if (context->metadata[1])
+      FLAC__metadata_object_delete(context->metadata[1]);
 
-    // delete encoder
-    FLAC__stream_encoder_delete(m_encoder);
-    m_encoder = NULL;
+    // free the encoder
+    if (context->encoder)
+      FLAC__stream_encoder_delete(context->encoder);
+
+    delete context;
   }
-
-  delete[] m_samplesBuf;
-  m_samplesBuf = NULL;
-
-  m_opaque        = NULL;
-  m_writeCallback = NULL;
-  m_seekCallback  = NULL;
 }
 
 }
