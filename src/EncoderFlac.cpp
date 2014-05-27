@@ -177,7 +177,7 @@ void* Create(audioenc_callbacks *callbacks)
     // allocate libFLAC encoder
     FLAC__StreamEncoder *encoder = FLAC__stream_encoder_new();
     if (!encoder)
-      return false;
+      return NULL;
 
     return new flac_context(encoder, *callbacks);
   }
