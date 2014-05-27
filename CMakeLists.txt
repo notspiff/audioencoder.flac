@@ -11,7 +11,8 @@ find_package(FLAC REQUIRED)
 find_package(Ogg REQUIRED)
 
 include_directories(${XBMC_INCLUDE_DIR}
-                    ${FLAC_INCLUDE_DIRS})
+                    ${FLAC_INCLUDE_DIRS}
+                    ${OGG_INCLUDE_DIRS})
 
 set(FLAC_SOURCES src/EncoderFlac.cpp)
 
