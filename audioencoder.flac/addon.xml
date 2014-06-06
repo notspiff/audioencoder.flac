@@ -12,7 +12,8 @@
     extension=".flac"
     library_linux="audioencoder.flac.so"
     library_android="libaudioencoder.flac.so"
-    library_osx="audioencoder.flac.dylib"/>
+    library_osx="audioencoder.flac.dylib"
+    library_windx="audioencoder.flac.dll"/>
   <extension point="xbmc.addon.metadata">
     <summary lang="en">Flac Audio Encoder</summary>
     <description lang="en">Flac Audio Encoder</description>
