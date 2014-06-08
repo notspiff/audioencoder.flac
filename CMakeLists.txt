@@ -17,4 +17,9 @@ set(FLAC_SOURCES src/EncoderFlac.cpp)
 
 set(DEPLIBS ${FLAC_LIBRARIES} ${OGG_LIBRARIES})
 
+# on win32 we use a static version of libflac so we need to define FLAC__NO_DLL
+if(WIN32)
+  add_definitions(-DFLAC__NO_DLL)
+endif()
+
 build_addon(audioencoder.flac FLAC DEPLIBS)

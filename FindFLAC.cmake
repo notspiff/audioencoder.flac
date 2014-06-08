@@ -13,7 +13,7 @@ endif()
 
 if(NOT FLAC_FOUND)
   find_path(FLAC_INCLUDE_DIRS FLAC/stream_decoder.h)
-  find_library(FLAC_LIBRARIES FLAC)
+  find_library(FLAC_LIBRARIES NAMES FLAC libFLAC_static)
 endif()
 
 include(FindPackageHandleStandardArgs)
