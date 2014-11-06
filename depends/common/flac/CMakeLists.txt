@@ -11,6 +11,9 @@ externalproject_add(flac
                       --disable-xmms-plugin
                       --disable-cpplibs
                       --disable-asm-optimizations
+                      --enable-static
+                      --disable-shared
+                      "CFLAGS=-fPIC -DPIC -O2"
                     INSTALL_COMMAND ""
                     BUILD_IN_SOURCE 1)
 
