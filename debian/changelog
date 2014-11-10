@@ -1,4 +1,4 @@
-xbmc-audioencoder-flac (1.0.0-1~trusty) trusty; urgency=low
+kodi-audioencoder-flac (1.0.0-1~trusty) trusty; urgency=low
 
   [ wsnipex ]
   * initial release
