@@ -204,7 +204,7 @@ bool Start(void *ctx, int iInChannels, int iInRate, int iInBits,
   ok &= FLAC__stream_encoder_set_channels(context->encoder, iInChannels);
   ok &= FLAC__stream_encoder_set_bits_per_sample(context->encoder, iInBits);
   ok &= FLAC__stream_encoder_set_sample_rate(context->encoder, iInRate);
-  ok &= FLAC__stream_encoder_set_total_samples_estimate(context->encoder, (FLAC__uint64)iTrackLength * iInRate);
+  ok &= FLAC__stream_encoder_set_total_samples_estimate(context->encoder, iTrackLength / 4);
   ok &= FLAC__stream_encoder_set_compression_level(context->encoder, level);
 
   // now add some metadata
