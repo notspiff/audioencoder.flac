@@ -20,7 +20,7 @@
 
 #include <FLAC/stream_encoder.h>
 #include <FLAC/metadata.h>
-#include "kodi/xbmc_audioenc_dll.h"
+#include "xbmc_audioenc_dll.h"
 #include <string.h>
 
 extern "C" {
