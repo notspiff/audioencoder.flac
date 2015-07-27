@@ -24,3 +24,5 @@ if(WIN32)
 endif()
 
 build_addon(audioencoder.flac FLAC DEPLIBS)
+
+include(CPack)
