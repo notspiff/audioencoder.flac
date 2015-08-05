@@ -10,13 +10,10 @@
   <extension
     point="xbmc.audioencoder"
     extension=".flac"
-    library_linux="audioencoder.flac.so"
-    library_android="libaudioencoder.flac.so"
-    library_osx="audioencoder.flac.dylib"
-    library_windx="audioencoder.flac.dll"/>
+    library_@PLATFORM@="@LIBRARY_FILENAME@"/>
   <extension point="xbmc.addon.metadata">
     <summary lang="en">Flac Audio Encoder</summary>
     <description lang="en">Flac Audio Encoder</description>
-    <platform>all</platform>
+    <platform>@PLATFORM@</platform>
   </extension>
 </addon>
