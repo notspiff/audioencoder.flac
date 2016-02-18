@@ -1,0 +1,24 @@
+# build artifacts
+build/
+debian/changelog
+debian/files
+audioencoder.flac/addon.xml
+debian/kodi-audioencoder-flac-dbg.debhelper.log
+debian/kodi-audioencoder-flac-dbg.substvars
+debian/kodi-audioencoder-flac-dbg/
+debian/kodi-audioencoder-flac.debhelper.log
+debian/kodi-audioencoder-flac.postinst.debhelper
+debian/kodi-audioencoder-flac.postrm.debhelper
+debian/kodi-audioencoder-flac.substvars
+debian/kodi-audioencoder-flac/
+debian/tmp/
+obj-x86_64-linux-gnu/
+
+# clion
+.idea/
+
+# Eclipse/CDT
+.cproject
+.project
+.settings/
+
