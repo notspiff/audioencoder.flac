@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <addon
   id="audioencoder.flac"
-  version="1.1.0"
+  version="1.1.1"
   name="Flac Audio Encoder"
   provider-name="spiff">
-  <requires>
-    <import addon="xbmc.audioencoder" version="1.0.0"/>
-  </requires>
+  <requires>@ADDON_DEPENDS@</requires>
   <extension
     point="xbmc.audioencoder"
     extension=".flac"
