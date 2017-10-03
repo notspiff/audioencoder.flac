@@ -5,7 +5,7 @@
  
  case "$host" in
 -	*-pc-linux-gnu)
-+	*-linux-*)
++	*-pc-linux-gnu|*-linux-gnueabi*)
  		sys_linux=true
  		AC_DEFINE(FLAC__SYS_LINUX)
  		AH_TEMPLATE(FLAC__SYS_LINUX, [define if building for Linux])
